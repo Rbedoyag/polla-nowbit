@@ -17,7 +17,7 @@ Respuesta:
   "total": 21,
   "ms": 6432,
   "posiciones": [
-    { "posicion": "1", "usuario": "robertb90", "nombre": "Roberto Bedoya", "puntos": "10", "inscripcion": "10 Jun - 09:48" },
+    { "posicion": "1", "usuario": "usuario1", "nombre": "Nombre Apellido", "puntos": "10", "inscripcion": "10 Jun - 09:48" },
     ...
   ]
 }
