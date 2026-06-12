@@ -1,7 +1,9 @@
 # Imagen oficial de Playwright: trae Chromium y todas las deps de sistema.
-FROM mcr.microsoft.com/playwright:v1.48.0-jammy
+FROM mcr.microsoft.com/playwright:v1.60.0-jammy
 
 WORKDIR /app
+
+ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
 
 # Instalar deps primero para cachear capa
 COPY package*.json ./
