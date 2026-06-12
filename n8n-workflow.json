@@ -1,0 +1,116 @@
+{
+  "name": "Polla NowBit - Posiciones a WhatsApp (via microservicio)",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "trigger-manual",
+      "name": "Ejecutar manualmente",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [-400, 300]
+    },
+    {
+      "parameters": {
+        "url": "https://TU-SERVICIO.easypanel.host/polla/posiciones",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-api-key",
+              "value": "TU_API_KEY"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "id": "fetch-posiciones",
+      "name": "Fetch posiciones",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-180, 300],
+      "notes": "Ajusta URL del microservicio y el x-api-key"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Toma las posiciones del microservicio y arma mensajes para WhatsApp\nconst data = $input.first().json;\nif (!data.ok) throw new Error('Microservicio respondio error: ' + (data.error || 'desconocido'));\n\nconst items = data.posiciones || [];\nconst perMsg = 7;\nconst chunks = [];\nfor (let i = 0; i < items.length; i += perMsg) {\n  chunks.push(items.slice(i, i + perMsg));\n}\n\nconst medals = { '1': '🥇', '2': '🥈', '3': '🥉' };\nconst total = chunks.length;\nconst fecha = new Date().toLocaleString('es-CO', { timeZone: 'America/Bogota' });\n\nreturn chunks.map((chunk, idx) => {\n  const header = idx === 0\n    ? `⚽ *POLLA NOWBIT — COPA MUNDO 2026*\\n_Tabla de posiciones · ${fecha}_\\n\\n`\n    : '';\n  const body = chunk.map(r => {\n    const m = medals[r.posicion] || `${r.posicion}.`;\n    return `${m} *${r.nombre}* (${r.usuario}) — ${r.puntos} pts`;\n  }).join('\\n');\n  const footer = `\\n\\n_Parte ${idx + 1}/${total}_`;\n  return { json: { text: header + body + footer, parte: idx + 1, total } };\n});"
+      },
+      "id": "build-messages",
+      "name": "Construir mensajes",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [40, 300]
+    },
+    {
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      },
+      "id": "loop-messages",
+      "name": "Bucle mensajes",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [260, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://TU_EVOLUTION_HOST/message/sendText/TU_INSTANCIA",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey", "value": "TU_API_KEY_EVOLUTION" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"number\": \"573001112233\",\n  \"text\": {{ JSON.stringify($json.text) }}\n}",
+        "options": {}
+      },
+      "id": "send-whatsapp",
+      "name": "Enviar WhatsApp (Evolution)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [480, 200],
+      "notes": "Ajusta host, instancia, apikey y number. Para grupo usa el JID (...@g.us)."
+    },
+    {
+      "parameters": {
+        "amount": 2,
+        "unit": "seconds"
+      },
+      "id": "wait",
+      "name": "Esperar 2s",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [700, 200]
+    }
+  ],
+  "connections": {
+    "Ejecutar manualmente": {
+      "main": [[{ "node": "Fetch posiciones", "type": "main", "index": 0 }]]
+    },
+    "Fetch posiciones": {
+      "main": [[{ "node": "Construir mensajes", "type": "main", "index": 0 }]]
+    },
+    "Construir mensajes": {
+      "main": [[{ "node": "Bucle mensajes", "type": "main", "index": 0 }]]
+    },
+    "Bucle mensajes": {
+      "main": [
+        [],
+        [{ "node": "Enviar WhatsApp (Evolution)", "type": "main", "index": 0 }]
+      ]
+    },
+    "Enviar WhatsApp (Evolution)": {
+      "main": [[{ "node": "Esperar 2s", "type": "main", "index": 0 }]]
+    },
+    "Esperar 2s": {
+      "main": [[{ "node": "Bucle mensajes", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": { "executionOrder": "v1" },
+  "pinData": {}
+}
