@@ -41,6 +41,33 @@ async function getBrowser() {
 }
 
 // --- scraping ---
+async function hasPosicionesData(page) {
+  return page.evaluate(() => {
+    const trs = document.querySelectorAll('#ctl00_ContentPlaceInner_gvPuntos tr');
+    return [...trs].some((tr) => {
+      const tds = tr.querySelectorAll('td');
+      return tds.length >= 5 && /^\d+$/.test((tds[0].textContent || '').trim());
+    });
+  });
+}
+
+async function waitForPosicionesData(page) {
+  await page.waitForSelector('#ctl00_ContentPlaceInner_gvPuntos', {
+    state: 'attached',
+    timeout: 15000,
+  });
+  await page.waitForFunction(
+    () => {
+      const trs = document.querySelectorAll('#ctl00_ContentPlaceInner_gvPuntos tr');
+      return [...trs].some((tr) => {
+        const tds = tr.querySelectorAll('td');
+        return tds.length >= 5 && /^\d+$/.test((tds[0].textContent || '').trim());
+      });
+    },
+    { timeout: SCRAPE_TIMEOUT_MS },
+  );
+}
+
 async function scrapePosiciones() {
   const browser = await getBrowser();
   const context = await browser.newContext({
@@ -61,30 +88,30 @@ async function scrapePosiciones() {
       page.waitForLoadState('domcontentloaded'),
       page.click('#ctl00_ContentPlaceInner_btnLogin'),
     ]);
+    await page.waitForSelector('#ctl00_ContentPlaceInner_gvPollas', {
+      state: 'attached',
+      timeout: 15000,
+    });
 
-    // Verificar sesion: debemos ver gvPollas (lista de grupos) en Mi Cuenta
-    await page.waitForSelector('#ctl00_ContentPlaceInner_gvPollas', { timeout: 15000 });
-
-    // 2. Entrar a la Polla NowBit (postback)
+    // 2. Entrar a la Polla (postback ASP.NET)
     await Promise.all([
       page.waitForLoadState('domcontentloaded'),
       page.click(`#ctl00_ContentPlaceInner_gvPollas a:has-text("${POLLA_NAME}")`),
     ]);
+    await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
 
-    // 3. Activar pestana Posiciones si no esta activa
-    const gvPuntosVisible = await page.$('#ctl00_ContentPlaceInner_gvPuntos');
-    if (!gvPuntosVisible) {
-      const posTab = await page.$('a:has-text("Posiciones")');
-      if (posTab) {
-        await Promise.all([
-          page.waitForLoadState('domcontentloaded').catch(() => {}),
-          posTab.click(),
-        ]);
+    // 3. Activar pestana Posiciones si aun no hay filas de datos
+    if (!(await hasPosicionesData(page))) {
+      const posTab = page.locator('a:has-text("Posiciones")').first();
+      if (await posTab.count()) {
+        await posTab.click();
+        await page.waitForLoadState('domcontentloaded');
+        await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
       }
     }
-    await page.waitForSelector('#ctl00_ContentPlaceInner_gvPuntos tr', { timeout: 15000 });
+    await waitForPosicionesData(page);
 
-    // 4. Extraer tabla
+    // 4. Extraer tabla (ignora fila encabezado con th/class encabezado)
     const rows = await page.$$eval('#ctl00_ContentPlaceInner_gvPuntos tr', (trs) =>
       trs
         .map((tr) => {
@@ -102,6 +129,10 @@ async function scrapePosiciones() {
         })
         .filter(Boolean),
     );
+
+    if (rows.length === 0) {
+      throw new Error('Tabla de posiciones vacia o sin filas validas');
+    }
 
     return rows;
   } finally {
